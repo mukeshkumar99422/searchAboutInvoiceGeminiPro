@@ -245,8 +245,10 @@ reset_css = """
 st.markdown(reset_css, unsafe_allow_html=True)
 
 reset_placeholder = st.empty()
+btn=st.button("Reset All", key="reset_button", help="Clear all data", type="primary")
+st.caption("remove file first❕")
 with reset_placeholder.container():
-    if st.button("Reset All", key="reset_button", help="Clear all data", type="primary"):
+    if btn:
         # Clear everything from session_state
         for key in list(st.session_state.keys()):
             del st.session_state[key]

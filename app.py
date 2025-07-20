@@ -14,10 +14,28 @@ from google.genai.types import (
 import pandas as pd
 import io
 
-client = genai.Client()
+# --- Initialize the Gemini client ---
+@st.cache_resource
+def get_gemini_client():
+    return genai.Client()
+
+client = get_gemini_client()
 model = "gemini-2.5-pro"
 
+# --- Load CSS ---
+@st.cache_data
+def load_custom_css():
+    return """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    section.main > div:first-child {
+        padding-top: 0rem;
+    }
+    </style>
+    """
 st.set_page_config(page_title="Multilanguage Invoice Chatot", page_icon="📊")
+st.markdown(load_custom_css(), unsafe_allow_html=True)
 st.markdown(
     """
     <h1 style='text-align: center;'>BillBot</h1>
@@ -35,6 +53,8 @@ if "last_image_data" not in st.session_state:
     st.session_state.last_image_data = None
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+if "csv_file" not in st.session_state:
+    st.session_state.csv_file = None
 
 # --- Sidebar: Language & Chat History ---
 with st.sidebar:
@@ -42,29 +62,13 @@ with st.sidebar:
     language = st.selectbox("🌐 Output Language:", ["English","Assamese", "Bengali", "Bhojpuri", "Gujarati", "Hindi", "Kannada", "Khortha", "Malayalam", "Marathi", "Odia", "Punjabi", "Rajasthani", "Tamil", "Telugu", "Urdu"], index=0)
     st.markdown("---")
 
-# --- Hide Streamlit UI ---
-st.markdown("""
-<style>
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-section.main > div:first-child {
-    padding-top: 0rem;
-}
-</style>
-""", unsafe_allow_html=True)
-
 
 # --- Upload Invoice Image ---
 uploaded_file = st.file_uploader("📤 Upload an invoice image", type=["jpg", "jpeg", "png"])
-if uploaded_file is not None:
+if uploaded_file is not None and st.session_state.uploaded_file is None:
     st.session_state.uploaded_file = uploaded_file
     st.session_state.last_image_data = uploaded_file.getvalue()
 
-# --- Display Image ---
-if st.session_state.uploaded_file is not None:
-    with st.expander("📎 View Uploaded Invoice"):
-        image = Image.open(st.session_state.uploaded_file)
-        st.image(image, caption="🖼️ Uploaded Invoice", use_container_width=True)
 
 # --- Extract Item Data from Invoice and Save to CSV ---
 def extract_items_to_csv(image_data,file_type,client,model):
@@ -89,26 +93,27 @@ def extract_items_to_csv(image_data,file_type,client,model):
         extract_prompt,
         Part.from_bytes(data=image_data, mime_type=file_type),
     ]
-    response = client.models.generate_content(
-        model=model,
-        config=GenerateContentConfig(thinking_config=ThinkingConfig(thinking_budget=128)),
-        contents=contents
-    )
-
-    raw_text = response.text if hasattr(response, "text") else str(response)
-
-    # Convert text to dataframe
     try:
-        df = pd.read_csv(io.StringIO(raw_text))
-        csv_data = df.to_csv(index=False).encode("utf-8")
-        return csv_data
+        response = client.models.generate_content(
+            model=model,
+            config=GenerateContentConfig(thinking_config=ThinkingConfig(thinking_budget=128)),
+            contents=contents
+        )
+        raw_text = response.text if hasattr(response, "text") else str(response)
+
+        try:
+            df = pd.read_csv(io.StringIO(raw_text))
+            csv_data = df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+            return csv_data
+        except Exception as e:
+            return None
+
     except Exception as e:
-        return f"Error processing invoice: {e}"
+        st.error("⚠️ Failed to extract items from the invoice. Please try again later.")
+        return None
 
-
-csv_file = None
-if st.session_state.last_image_data and st.session_state.uploaded_file:
-    csv_file = extract_items_to_csv(
+if st.session_state.csv_file is None and st.session_state.last_image_data and st.session_state.uploaded_file:
+    st.session_state.csv_file = extract_items_to_csv(
         st.session_state.last_image_data,
         st.session_state.uploaded_file.type,
         client,
@@ -116,17 +121,24 @@ if st.session_state.last_image_data and st.session_state.uploaded_file:
     )
 
 # -- add download button for CSV file ---
-if csv_file:
-    with st.sidebar:
-        st.markdown("### Extracted Items")
+with st.sidebar:
+    st.markdown("### Extracted Items")
+    st.caption("Pick language before uploading invoice❕")
+    if st.session_state.csv_file:      
         st.download_button(
             label="Download as CSV",
-            data=csv_file,
+            data=st.session_state.csv_file,
             file_name="extracted_items.csv",
             mime="text/csv"
         )
-        st.markdown("---")
-                                                                                 
+    st.markdown("---")
+
+# # --- Display Image ---
+if st.session_state.uploaded_file is not None:
+    with st.expander("📎 View Uploaded Invoice"):
+        image = Image.open(st.session_state.uploaded_file)
+        st.image(image, caption="🖼️ Uploaded Invoice", use_container_width=True)
+       
 # --- Ask a Question ---
 st.markdown("---")
 with st.form("chat_form", clear_on_submit=False):
@@ -160,51 +172,90 @@ if submitted and user_input:
     if st.session_state.last_image_data is None:
         st.warning("Please upload an invoice image before starting the conversation.")
     else:
-        prompt = build_prompt()
-        contents = [
-            prompt,
-            Part.from_bytes(data=st.session_state.last_image_data, mime_type=st.session_state.uploaded_file.type),
-            f"User: {user_input}"
-        ]
-        response = client.models.generate_content(
-            model=model,
-            config=GenerateContentConfig(thinking_config=ThinkingConfig(thinking_budget=128)),
-            contents=contents
-        )
-        response = response.text if hasattr(response, "text") else str(response)
+        try:
+            prompt = build_prompt()
+            contents = [
+                prompt,
+                Part.from_bytes(data=st.session_state.last_image_data, mime_type=st.session_state.uploaded_file.type),
+                f"User: {user_input}"
+            ]
+            response = client.models.generate_content(
+                model=model,
+                config=GenerateContentConfig(thinking_config=ThinkingConfig(thinking_budget=128)),
+                contents=contents
+            )
+            response = response.text if hasattr(response, "text") else str(response)
 
-         # Display current question + answer below form
-        st.success(response)
+            st.success(response)
+            st.session_state.chat_history.insert(0, {
+                "user": user_input,
+                "response": response,
+            })
+            st.session_state.prev_language = language
+        except Exception as e:
+            st.error("⚠️ Request limit exceeded. Please try again after some time.")
 
-        st.session_state.chat_history.insert(0, {
-            "user": user_input,
-            "response": response,
-        })
-        st.session_state.prev_language = language
+
 
 # --- Re-translate Chat History if Language Changed ---
 if language != st.session_state.prev_language and st.session_state.chat_history:
     translation_prompt = build_translation_prompt(language)
     for msg in st.session_state.chat_history:
-        translation_response = client.models.generate_content(
-            model=model,
-            config=GenerateContentConfig(thinking_config=ThinkingConfig(thinking_budget=128)),
-            contents=[translation_prompt, msg["response"]]
-        )
-        translated_answer = translation_response.text if hasattr(translation_response, "text") else str(translation_response)
-        msg["response"] = translated_answer
+        try:
+            translation_response = client.models.generate_content(
+                model=model,
+                config=GenerateContentConfig(thinking_config=ThinkingConfig(thinking_budget=128)),
+                contents=[translation_prompt, msg["response"]]
+            )
+            translated_answer = translation_response.text if hasattr(translation_response, "text") else str(translation_response)
+            msg["response"] = translated_answer
+        except Exception as e:
+            st.error("⚠️ Translation request limit exceeded. Please try again later.")
     st.session_state.prev_language = language
     st.success(st.session_state.chat_history[0]["response"])
+
 
 # --- Now render Chat History (after possible translation) ---
 with st.sidebar:
     st.markdown("### Chat History")
-    for msg in st.session_state.chat_history:
-        with st.expander(f"{msg['user'][:30]}..."):
-            st.markdown(f"**You:** {msg['user']}")
-            st.markdown(f"**Bot:** {msg['response']}")
+    for i, msg in enumerate(st.session_state.chat_history):
+        with st.expander(f"{msg['user'][:30]}...", expanded=(i == 0)):
+            st.markdown(f"**You:** {msg['user']}  \n**Bot:** {msg['response']}")
 
+# --- Reset Button (Bottom Right Corner) ---
+reset_css = """
+    <style>
+    .stButton > button.reset-btn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background-color: #e63946;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 25px;
+        font-weight: bold;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        z-index: 9999;
+        cursor: pointer;
+    }
+    </style>
+"""
+st.markdown(reset_css, unsafe_allow_html=True)
 
-
+reset_placeholder = st.empty()
+with reset_placeholder.container():
+    if st.button("Reset All", key="reset_button", help="Clear all data", type="primary"):
+        # Clear everything from session_state
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        
+        # Remove uploaded file and forcefully clear widgets
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        reset_placeholder.empty()
+        uploaded_file= None
+        
+        st.rerun()
 
 

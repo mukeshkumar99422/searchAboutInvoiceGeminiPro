@@ -29,8 +29,9 @@ def load_custom_css():
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    section.main > div:first-child {
-        padding-top: 0rem;
+    /* Remove top padding of main body */
+    .block-container {
+        padding-top: 1rem !important;
     }
     </style>
     """

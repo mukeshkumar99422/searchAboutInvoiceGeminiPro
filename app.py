@@ -1,9 +1,7 @@
 import streamlit as st
 from dotenv import load_dotenv
 load_dotenv()
-import os
 
-from PIL import Image
 from google import genai
 from google.genai.types import (
     GenerateContentConfig,
@@ -11,7 +9,7 @@ from google.genai.types import (
     ThinkingConfig,
 )
 
-import pandas as pd
+# import pandas as pd
 import io
 
 # --- Initialize the Gemini client ---
@@ -125,6 +123,7 @@ def extract_items_to_csv(image_data,file_type,client,model):
         return None
 
 if st.session_state.csv_file is None and st.session_state.last_image_data and st.session_state.uploaded_file:
+    import pandas as pd
     st.session_state.csv_file = extract_items_to_csv(
         st.session_state.last_image_data,
         st.session_state.uploaded_file.type,
@@ -148,6 +147,7 @@ with st.sidebar:
 # # --- Display Image ---
 if st.session_state.uploaded_file is not None:
     with st.expander("📎 View Uploaded Invoice"):
+        from PIL import Image
         image = Image.open(st.session_state.uploaded_file)
         st.image(image, caption="🖼️ Uploaded Invoice", use_container_width=True)
        

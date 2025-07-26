@@ -80,15 +80,20 @@ def extract_items_to_csv(image_data,file_type,client,model):
     Also extract the Total Bill amount.
     Return the output strictly in this format:
 
-    Item Number,Item Name,Price
-    1,Paracetamol 500mg,50
-    2,Aspirin 100mg,100
+    Item Number,Item Name,Item Price,Total Tax amount,Total Price
+    1,Paracetamol 500mg,50,5,55
+    2,Aspirin 100mg,100,10,110
+    3,Ibuprofen 200mg,150,0,150
     ...
-    ,Total,150
+    ,Total,300,60,315
+
+    Note that is there is no tax on amount then feild value should be 0.
 
     items name should be in {language} language.
 
     Only return this structured CSV-style text. No explanation.
+    If there are no items, return only one thing that is: "0".
+    If the image is not clear, return only one thing that is: "1"
     """
     contents = [
         extract_prompt,
@@ -103,6 +108,12 @@ def extract_items_to_csv(image_data,file_type,client,model):
         raw_text = response.text if hasattr(response, "text") else str(response)
 
         try:
+            if(raw_text.strip() == "0"):
+                st.error("⚠️ No items found in the invoice. Please check the invoice.")
+                return None
+            elif(raw_text.strip() == "1"):
+                st.error("⚠️ Items can not be extacted,Please upload a clearer image.")
+                return None
             df = pd.read_csv(io.StringIO(raw_text))
             csv_data = df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
             return csv_data
@@ -166,6 +177,8 @@ def build_translation_prompt(lang):
 You are a professional translator.
 Translate the response to {lang} language only. Keep numbers and technical terms (like GSTIN, PAN, amounts) unchanged.
 Don't mention that this is a translation — give only the translated output.
+If the response is already in {lang}, return it as is.
+all things should be in {lang} language, including names.
 """
 
 # --- Gemini Call for New Question ---

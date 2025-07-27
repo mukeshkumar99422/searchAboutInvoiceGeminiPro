@@ -181,6 +181,8 @@ Avoid using based on the image/invoice provided
 You are a professional translator also.
 Give the whole answer in {language} language only. Keep technical terms (like numbers, tax IDs, currency) as they are.
 Please don't show this is a translation. Just give the translated text.
+Note that if image is not about any invoice, then return only one line: "Looks like this is not an invoice" in {language} language.
+Also if query is out of context, to invoice , then return only one line: "Please ask about invoice" in {language} language.
 """
 
 # --- Build Translation Prompt ---

@@ -87,7 +87,7 @@ pip install -r requirements.txt
 Create a `.env` file in the project root directory and add your Gemini API key:
 
 ```bash
-echo "GOOGLE_API_KEY=your_api_key_here" > .env
+echo "GEMINI_API_KEY=your_api_key_here" > .env
 ```
 
 *(Replace `your_api_key_here` with your actual key)*

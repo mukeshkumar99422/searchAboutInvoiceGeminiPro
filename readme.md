@@ -37,7 +37,7 @@ It helps users **upload invoice images, extract tabular item details, and ask qu
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/billbot.git
+git clone https://github.com/mukeshkumar99422/searchAboutInvoiceGeminiPro
 cd billbot
 ```
 
